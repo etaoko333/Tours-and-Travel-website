@@ -17,12 +17,12 @@ spec:
         image: sholly333/travel-website:latest  # Replace with your image
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 3000
+        - containerPort: 5000
       - name: backend
         image: sholly333/travel-website:latest  # Replace with your image
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 3000
+        - containerPort: 5000
         env:
         - name: NODE_ENV
           value: production
@@ -37,6 +37,6 @@ spec:
     app: travel-website
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 3000
+      port: 81
+      targetPort: 5000
   type: LoadBalancer
