@@ -1,6 +1,9 @@
 # Use an official Node.js runtime as the base image
 FROM node:16-alpine
 
+# Install Python and build tools
+RUN apk add --no-cache python3 make g++
+
 # Set the working directory inside the container
 WORKDIR /app
 
