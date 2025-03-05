@@ -15,14 +15,14 @@ pipeline{
         }
         stage('Checkout from Git'){
             steps{
-                git branch: 'main', url: 'https://github.com/Aj7Ay/Zomato-Clone.git'
+                git branch: 'main', url: 'https://https://github.com/etaoko333/Tours-and-Travel-website.git'
             }
         }
         stage("Sonarqube Analysis "){
             steps{
                 withSonarQubeEnv('sonar-server') {
-                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=zomato \
-                    -Dsonar.projectKey=zomato '''
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=travel-website \
+                    -Dsonar.projectKey=travel-website '''
                 }
             }
         }
@@ -66,4 +66,56 @@ pipeline{
             }
         }
     }
+}
+stage('K8s-Deploy') {
+            steps {
+                withKubeConfig(caCertificate: '', clusterName: 'devopsola-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'airbnb-apps', restrictKubeConfigAccess: false, serverUrl: 'https://7D38860BEF9580B33FBA8B8A8020AA5E.yl4.us-west-1.eks.amazonaws.com') {
+                    sh "kubectl apply -f deployment-service.yml"
+                    sleep 20
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                withKubeConfig(caCertificate: '', clusterName: 'devopsola-cluster', contextName: '', credentialsId: 'k8-token', namespace: 'airbnb-apps', restrictKubeConfigAccess: false, serverUrl: 'https://7D38860BEF9580B33FBA8B8A8020AA5E.yl4.us-west-1.eks.amazonaws.com') {
+                    sh "kubectl get pods"
+                    sh "kubectl get service"
+                }
+            }
+        }
+    } 
+
+    post {
+        always {
+            script {
+                def jobName = env.JOB_NAME
+                def buildNumber = env.BUILD_NUMBER
+                def pipelineStatus = currentBuild.result ?: 'UNKNOWN'
+                def bannerColor = pipelineStatus.toUpperCase() == 'SUCCESS' ? 'green' : 'red'
+
+                def body = """
+                <body>
+                    <div style="border: 2px solid ${bannerColor}; padding: 10px;">
+                        <h3 style="color: ${bannerColor};">
+                            Pipeline Status: ${pipelineStatus.toUpperCase()}
+                        </h3>
+                        <p>Job: ${jobName}</p>
+                        <p>Build Number: ${buildNumber}</p>
+                        <p>Status: ${pipelineStatus.toUpperCase()}</p>
+                    </div>
+                </body>
+                """
+
+                emailext(
+                    subject: "${jobName} - Build ${buildNumber} - ${pipelineStatus.toUpperCase()}",
+                    body: body,
+                    to: 'alongemiracle333@gmail.com',
+                    from: 'jenkins@example.com',
+                    replyTo: 'jenkins@example.com',
+                    mimeType: 'text/html'
+                )
+            }
+        }
+    } // Closing post
 }
