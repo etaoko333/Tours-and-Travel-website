@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-website-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: travel-website
+  template:
+    metadata:
+      labels:
+        app: airbnb-app
+    spec:
+      containers:
+      - name: frontend
+        image: sholly333/travel-website:latest  # Replace with your image
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+      - name: backend
+        image: sholly333/travel-website:latest  # Replace with your image
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: production
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-website-service
+spec:
+  selector:
+    app: travel-website
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: LoadBalancer
