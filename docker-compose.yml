@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name:travel-and-tours-app
+    container_name: travel-and-tours-app
     ports:
       - '5000:5000'
     environment:
@@ -15,5 +15,5 @@ services:
       - /app/node_modules
 
 networks:
-  rentzone-network:
+  travel-and-tours-app-network:
     driver: bridge
