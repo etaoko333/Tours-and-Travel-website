@@ -1,191 +1,82 @@
-const mongoose = require('mongoose');
 const slugify = require('slugify');
-//const User = require('./userModel');
-// const validator = require('validator');
 
-const tourSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, 'A tour must have a name'],
-      unique: true,
-      trim: true,
-      maxlength: [40, 'A tour name must have less or equal then 40 characters'],
-      minlength: [10, 'A tour name must have more or equal then 10 characters']
-      // validate: [validator.isAlpha, 'Tour name must only contain characters']
-    },
-    slug: String,
-    duration: {
-      type: Number,
-      required: [true, 'A tour must have a duration']
-    },
-    maxGroupSize: {
-      type: Number,
-      required: [true, 'A tour must have a group size']
-    },
-    difficulty: {
-      type: String,
-      required: [true, 'A tour must have a difficulty'],
-      enum: {
-        values: ['easy', 'medium', 'difficult'],
-        message: 'Difficulty is either: easy, medium, difficult'
-      }
-    },
-    ratingsAverage: {
-      type: Number,
-      default: 4.5,
-      min: [1, 'Rating must be above 1.0'],
-      max: [5, 'Rating must be below 5.0'],
-      set: val => Math.round(val * 10) / 10
-    },
-    ratingsQuantity: {
-      type: Number,
-      default: 0
-    },
-    price: {
-      type: Number,
-      required: [true, 'A tour must have a price']
-    },
-    priceDiscount: {
-      type: Number,
-      validate: {
-        validator: function(val) {
-          // this only points to current doc on NEW document creation
-          return val < this.price;
-        },
-        message: 'Discount price ({VALUE}) should be below regular price'
-      }
-    },
-    summary: {
-      type: String,
-      trim: true,
-      required: [true, 'A tour must have a description']
-    },
-    description: {
-      type: String,
-      trim: true
-    },
-    imageCover: {
-      type: String,
-      required: [true, 'A tour must have a cover image']
-    },
-    images: [String],
-    createdAt: {
-      type: Date,
-      default: Date.now(),
-      select: false
-    },
-    startDates: [Date],
-    secretTour: {
-      type: Boolean,
-      default: false
-    },
+// In-memory storage for tours
+let tours = [];  // This is your in-memory "database"
 
-    startLocation: {
-      //GeoJSON
-      type: {
-        type: String,
-        default: 'Point',
-        enum: ['Point']
-      },
-      coordinates: [Number],
-      address: String,
-      description: String
-    },
-    locations: [
-      {
-        type: {
-          type: String,
-          default: 'Point',
-          enum: ['Point']
-        },
-        coordinates: [Number],
-        address: String,
-        description: String,
-        day: Number
-      }
-    ],
-    guides: [
-      {
-        type: mongoose.Schema.ObjectId,
-        ref: 'User'
-      }
-    ]
-  },
-  {
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+// Function to create a new tour
+const createTour = (tourData) => {
+  const tour = {
+    id: tours.length + 1,  // Generate a new ID (simple example)
+    name: tourData.name,
+    slug: slugify(tourData.name, { lower: true }),
+    duration: tourData.duration,
+    maxGroupSize: tourData.maxGroupSize,
+    difficulty: tourData.difficulty,
+    price: tourData.price,
+    priceDiscount: tourData.priceDiscount,
+    summary: tourData.summary,
+    description: tourData.description,
+    imageCover: tourData.imageCover,
+    images: tourData.images || [],
+    createdAt: new Date(),
+    startDates: tourData.startDates || [],
+    secretTour: tourData.secretTour || false,
+    startLocation: tourData.startLocation || null,
+    locations: tourData.locations || [],
+    guides: tourData.guides || []
+  };
+  
+  tours.push(tour);  // Add the tour to the "database"
+  return tour;
+};
+
+// Function to get all tours
+const getAllTours = () => tours.filter(tour => !tour.secretTour);
+
+// Function to get a specific tour by ID
+const getTourById = (id) => tours.find(tour => tour.id === id);
+
+// Function to update a tour
+const updateTour = (id, updatedData) => {
+  const tourIndex = tours.findIndex(tour => tour.id === id);
+  if (tourIndex === -1) return null;
+  
+  tours[tourIndex] = { ...tours[tourIndex], ...updatedData };
+  return tours[tourIndex];
+};
+
+// Function to delete a tour by ID
+const deleteTour = (id) => {
+  const tourIndex = tours.findIndex(tour => tour.id === id);
+  if (tourIndex !== -1) {
+    tours.splice(tourIndex, 1);  // Remove the tour from the "database"
+    return true;
   }
-);
+  return false;
+};
 
-//tourSchema.index({ price: 1 });
-tourSchema.index({ price: 1, ratingsAverage: -1 });
-tourSchema.index({ slug: 1 });
-tourSchema.index({ startLocation: '2dsphere' });
-
-tourSchema.virtual('durationWeeks').get(function() {
-  return this.duration / 7;
+// Example: Creating a new tour
+createTour({
+  name: 'Exploring the Amazon Jungle',
+  duration: 10,
+  maxGroupSize: 12,
+  difficulty: 'medium',
+  price: 1500,
+  summary: 'A journey through the depths of the Amazon rainforest.',
+  imageCover: 'amazon_jungle.jpg',
+  startLocation: { coordinates: [3.465, -62.259], address: 'Amazon Rainforest' }
 });
 
-//Virtual Populate
-tourSchema.virtual('reviews', {
-  ref: 'Review',
-  foreignField: 'tour',
-  localField: '_id'
-});
+// Example of how to fetch all tours
+console.log(getAllTours());
 
-// DOCUMENT MIDDLEWARE: runs before .save() and .create()
-tourSchema.pre('save', function(next) {
-  this.slug = slugify(this.name, { lower: true });
-  next();
-});
+// Example of how to fetch a specific tour
+console.log(getTourById(1));
 
-// tourSchema.pre('save', async function(next) {
-//   const guidesPromises = this.guides.map(async id => await User.findById(id));
-//   this.guides = await Promise.all(guidesPromises);
-//   next();
-// });
+// Example of how to update a tour
+updateTour(1, { price: 1700 });
 
-// tourSchema.pre('save', function(next) {
-//   console.log('Will save document...');
-//   next();
-// });
+// Example of how to delete a tour
+deleteTour(1);
 
-// tourSchema.post('save', function(doc, next) {
-//   console.log(doc);
-//   next();
-// });
-
-// QUERY MIDDLEWARE
-// tourSchema.pre('find', function(next) {
-tourSchema.pre(/^find/, function(next) {
-  this.find({ secretTour: { $ne: true } });
-
-  this.start = Date.now();
-  next();
-});
-
-tourSchema.pre(/^find/, function(next) {
-  this.populate({
-    path: 'guides',
-    select: '-__v -passwordChangedAt'
-  });
-  next();
-});
-
-tourSchema.post(/^find/, function(docs, next) {
-  console.log(`Query took ${Date.now() - this.start} milliseconds!`);
-  next();
-});
-
-// AGGREGATION MIDDLEWARE
-// tourSchema.pre('aggregate', function(next) {
-//   this.pipeline().unshift({ $match: { secretTour: { $ne: true } } });
-
-//   console.log(this.pipeline());
-//   next();
-// });
-
-const Tour = mongoose.model('Tour', tourSchema);
-
-module.exports = Tour;
+module.exports = { createTour, getAllTours, getTourById, updateTour, deleteTour };
