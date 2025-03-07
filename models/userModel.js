@@ -1,112 +1,133 @@
 const crypto = require('crypto');
-const mongoose = require('mongoose');
-const validator = require('validator');
 const bcrypt = require('bcryptjs');
+const validator = require('validator');
 
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Please tell us your name!']
-  },
-  email: {
-    type: String,
-    required: [true, 'Please provide your Email'],
-    unique: true,
-    lowercase: true,
-    validate: [validator.isEmail, 'Please provide a valid email']
-  },
-  photo: {
-    type: String,
-    default: 'default.jpg'
-  },
-  role: {
-    type: String,
-    enum: ['user', 'admin', 'guide', 'lead-guide'],
-    default: 'user'
-  },
-  password: {
-    type: String,
-    required: [true, 'Please provide a password'],
-    minlength: 8,
-    select: false
-  },
-  passwordConfirm: {
-    type: String,
-    required: [true, 'Please confirm your password'],
-    validate: {
-      // This only works on CREATE and SAVE!!!
-      validator: function(el) {
-        return el === this.password;
-      },
-      message: 'Passwords are not the same'
+// In-memory storage for users (this can be replaced with a JSON file for persistence)
+let users = [];
+
+// Helper function to find user by email
+const findUserByEmail = (email) => {
+  return users.find(user => user.email === email);
+};
+
+// User model
+class User {
+  constructor({ name, email, password, passwordConfirm, photo = 'default.jpg', role = 'user' }) {
+    this.id = users.length + 1; // Simple ID generation for example
+    this.name = name;
+    this.email = email.toLowerCase();
+    this.photo = photo;
+    this.role = role;
+    this.password = password;
+    this.passwordConfirm = passwordConfirm;
+    this.passwordChangedAt = null;
+    this.PasswordResetToken = null;
+    this.PasswordResetExpires = null;
+    this.active = true;
+
+    this.validateEmail();
+    this.hashPassword();
+  }
+
+  // Validate email using the validator library
+  validateEmail() {
+    if (!validator.isEmail(this.email)) {
+      throw new Error('Please provide a valid email');
     }
-  },
-  passwordChangedAt: {
-    type: Date
-  },
-  PasswordResetToken: String,
-  PasswordResetExpires: Date,
-  active: {
-    type: Boolean,
-    default: true,
-    select: false
   }
-});
 
-userSchema.pre('save', async function(next) {
-  //Only run this function is password was actually modified
-  if (!this.isModified('password')) return next();
-
-  // hash the password with cost of 12
-  this.password = await bcrypt.hash(this.password, 12);
-  //Delete the Confirm password
-  this.passwordConfirm = undefined;
-  next();
-});
-
-userSchema.pre('save', function(next) {
-  if (!this.isModified('password') || this.isNew) return next();
-  this.passwordChangedAt = Date.now() - 1000;
-  next();
-});
-
-userSchema.pre(/^find/, function(next) {
-  //this points to the current query because it is a query middleware
-  this.find({ active: { $ne: false } });
-  next();
-});
-
-userSchema.methods.correctPassword = async function(
-  candidatePassword,
-  userPassword
-) {
-  return await bcrypt.compare(candidatePassword, userPassword);
-};
-
-userSchema.methods.changedPasswordAfter = function(JWTtimestamp) {
-  if (this.passwordChangedAt) {
-    const changedTimestamp = parseInt(
-      this.passwordChangedAt.getTime() / 1000,
-      10
-    );
-
-    return JWTtimestamp < changedTimestamp;
+  // Hash password if the password is modified
+  async hashPassword() {
+    if (this.password) {
+      this.password = await bcrypt.hash(this.password, 12);
+      this.passwordConfirm = undefined;  // Remove passwordConfirm after hashing
+    }
   }
-  //False means not changed
-  return false;
-};
 
-userSchema.methods.createPasswordResetToken = function() {
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  this.PasswordResetToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex');
-  console.log({ resetToken }, this.PasswordResetToken);
-  this.PasswordResetExpires = Date.now() + 10 * 60 * 1000;
-  return resetToken;
-};
+  // Compare candidate password with the stored hashed password
+  async correctPassword(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+  }
 
-const User = mongoose.model('User', userSchema);
+  // Method to change the password after a JWT is issued
+  changedPasswordAfter(JWTtimestamp) {
+    if (this.passwordChangedAt) {
+      const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+      return JWTtimestamp < changedTimestamp;
+    }
+    return false; // Password not changed
+  }
+
+  // Create password reset token
+  createPasswordResetToken() {
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    this.PasswordResetToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    this.PasswordResetExpires = Date.now() + 10 * 60 * 1000; // Token expires in 10 minutes
+    return resetToken;
+  }
+
+  // Save user to in-memory storage (this is just an example, replace with file storage or DB if needed)
+  save() {
+    // Check if email already exists in users array
+    const existingUser = findUserByEmail(this.email);
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
+    users.push(this);
+    return this;
+  }
+
+  // Static method to get user by email
+  static findByEmail(email) {
+    return findUserByEmail(email);
+  }
+
+  // Static method to get all active users
+  static getAllActiveUsers() {
+    return users.filter(user => user.active);
+  }
+
+  // Static method to deactivate user
+  static deactivateUser(email) {
+    const user = findUserByEmail(email);
+    if (user) {
+      user.active = false;
+      return true;
+    }
+    return false;
+  }
+}
+
+// Example usage:
+// Creating a new user
+try {
+  const newUser = new User({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    password: 'password123',
+    passwordConfirm: 'password123'
+  });
+
+  newUser.save();
+  console.log('User created successfully:', newUser);
+
+  // Check if the user's password is correct
+  const isPasswordCorrect = newUser.correctPassword('password123');
+  console.log('Password match:', isPasswordCorrect);
+
+  // Create password reset token
+  const resetToken = newUser.createPasswordResetToken();
+  console.log('Password reset token:', resetToken);
+
+  // Deactivate user
+  User.deactivateUser('john.doe@example.com');
+  console.log('User deactivated:', User.findByEmail('john.doe@example.com'));
+
+} catch (err) {
+  console.log('Error:', err.message);
+}
 
 module.exports = User;
