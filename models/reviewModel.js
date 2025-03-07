@@ -1,79 +1,136 @@
-const mongoose = require('mongoose');
-const Tour = require('./tourModel');
-const reviewSchema = new mongoose.Schema(
-  {
-    review: {
-      type: String,
-      required: [true, 'Review can not be empty!']
-    },
-    rating: {
-      type: Number,
-      min: 1,
-      max: 5
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now()
-    },
-    tour: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'Tour',
-      required: [true, 'Review must belong to a tour.']
-    },
-    user: {
-      type: mongoose.Schema.ObjectId,
-      ref: 'User',
-      required: [true, 'Review must belong to a user.']
-    }
-  },
-  {
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
-  }
-);
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const validator = require('validator');
 
-reviewSchema.index({ tour: 1, user: 1 }, { unique: true });
+// In-memory storage for users (this can be replaced with a JSON file for persistence)
+let users = [];
 
-reviewSchema.pre(/^find/, function(next) {
-  //   this.populate({
-  //     path: 'tour',
-  //     select: 'name'
-  //   }).populate({
-  //     path: 'user',
-  //     select: 'name photo'
-  //   });
-  this.populate({
-    path: 'user',
-    select: 'name photo'
-  });
-  next();
-});
-
-reviewSchema.statics.calcAverageRatings = async function(tourId) {
-  const stats = await this.aggregate([
-    {
-      $match: { tour: tourId }
-    },
-    {
-      $group: {
-        _id: '$tour',
-        nRating: { $sum: 1 },
-        avgRating: { $avg: '$rating' }
-      }
-    }
-  ]);
-  console.log(stats);
-  await Tour.findByIdAndUpdate(tourId, {
-    ratingsQuantity: stats[0].nRating,
-    ratingsAverage: stats[0].avgRating
-  });
+// Helper function to find user by email
+const findUserByEmail = (email) => {
+  return users.find(user => user.email === email);
 };
 
-reviewSchema.post('save', function() {
-  //this keyword points to current review
-  this.constructor.calcAverageRatings(this.tour);
-});
+// User model
+class User {
+  constructor({ name, email, password, passwordConfirm, photo = 'default.jpg', role = 'user' }) {
+    this.id = users.length + 1; // Simple ID generation for example
+    this.name = name;
+    this.email = email.toLowerCase();
+    this.photo = photo;
+    this.role = role;
+    this.password = password;
+    this.passwordConfirm = passwordConfirm;
+    this.passwordChangedAt = null;
+    this.PasswordResetToken = null;
+    this.PasswordResetExpires = null;
+    this.active = true;
 
-const Review = mongoose.model('Review', reviewSchema);
+    // Validate email format
+    this.validateEmail();
+    // Hash password before storing
+    this.hashPassword();
+  }
 
-module.exports = Review;
+  // Validate email using the validator library
+  validateEmail() {
+    if (!validator.isEmail(this.email)) {
+      throw new Error('Please provide a valid email');
+    }
+  }
+
+  // Hash password if the password is modified
+  async hashPassword() {
+    if (this.password) {
+      this.password = await bcrypt.hash(this.password, 12);
+      this.passwordConfirm = undefined;  // Remove passwordConfirm after hashing
+    }
+  }
+
+  // Compare candidate password with the stored hashed password
+  async correctPassword(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+  }
+
+  // Method to check if the password has changed after a JWT is issued
+  changedPasswordAfter(JWTtimestamp) {
+    if (this.passwordChangedAt) {
+      const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
+      return JWTtimestamp < changedTimestamp;
+    }
+    return false; // Password not changed
+  }
+
+  // Create a password reset token
+  createPasswordResetToken() {
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    this.PasswordResetToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+    this.PasswordResetExpires = Date.now() + 10 * 60 * 1000; // Token expires in 10 minutes
+    return resetToken;
+  }
+
+  // Save user to in-memory storage (this is just an example, replace with file storage or DB if needed)
+  save() {
+    // Check if email already exists in users array
+    const existingUser = findUserByEmail(this.email);
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
+    users.push(this);
+    return this;
+  }
+
+  // Static method to get user by email
+  static findByEmail(email) {
+    return findUserByEmail(email);
+  }
+
+  // Static method to get all active users
+  static getAllActiveUsers() {
+    return users.filter(user => user.active);
+  }
+
+  // Static method to deactivate user
+  static deactivateUser(email) {
+    const user = findUserByEmail(email);
+    if (user) {
+      user.active = false;
+      return true;
+    }
+    return false;
+  }
+}
+
+// Example usage:
+// Creating a new user
+try {
+  const newUser = new User({
+    name: 'John Doe',
+    email: 'john.doe@example.com',
+    password: 'password123',
+    passwordConfirm: 'password123'
+  });
+
+  newUser.save();
+  console.log('User created successfully:', newUser);
+
+  // Check if the user's password is correct
+  newUser.correctPassword('password123').then(isPasswordCorrect => {
+    console.log('Password match:', isPasswordCorrect);
+  });
+
+  // Create password reset token
+  const resetToken = newUser.createPasswordResetToken();
+  console.log('Password reset token:', resetToken);
+
+  // Deactivate user
+  User.deactivateUser('john.doe@example.com');
+  console.log('User deactivated:', User.findByEmail('john.doe@example.com'));
+
+} catch (err) {
+  console.log('Error:', err.message);
+}
+
+module.exports = User;
