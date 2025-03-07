@@ -1,82 +1,52 @@
-const slugify = require('slugify');
+const express = require('express');
+const app = express();
+app.use(express.json()); // To parse JSON request body
+const { createTour, getAllTours, getTourById, updateTour, deleteTour } = require('./tourModule');
 
-// In-memory storage for tours
-let tours = [];  // This is your in-memory "database"
-
-// Function to create a new tour
-const createTour = (tourData) => {
-  const tour = {
-    id: tours.length + 1,  // Generate a new ID (simple example)
-    name: tourData.name,
-    slug: slugify(tourData.name, { lower: true }),
-    duration: tourData.duration,
-    maxGroupSize: tourData.maxGroupSize,
-    difficulty: tourData.difficulty,
-    price: tourData.price,
-    priceDiscount: tourData.priceDiscount,
-    summary: tourData.summary,
-    description: tourData.description,
-    imageCover: tourData.imageCover,
-    images: tourData.images || [],
-    createdAt: new Date(),
-    startDates: tourData.startDates || [],
-    secretTour: tourData.secretTour || false,
-    startLocation: tourData.startLocation || null,
-    locations: tourData.locations || [],
-    guides: tourData.guides || []
-  };
-  
-  tours.push(tour);  // Add the tour to the "database"
-  return tour;
-};
-
-// Function to get all tours
-const getAllTours = () => tours.filter(tour => !tour.secretTour);
-
-// Function to get a specific tour by ID
-const getTourById = (id) => tours.find(tour => tour.id === id);
-
-// Function to update a tour
-const updateTour = (id, updatedData) => {
-  const tourIndex = tours.findIndex(tour => tour.id === id);
-  if (tourIndex === -1) return null;
-  
-  tours[tourIndex] = { ...tours[tourIndex], ...updatedData };
-  return tours[tourIndex];
-};
-
-// Function to delete a tour by ID
-const deleteTour = (id) => {
-  const tourIndex = tours.findIndex(tour => tour.id === id);
-  if (tourIndex !== -1) {
-    tours.splice(tourIndex, 1);  // Remove the tour from the "database"
-    return true;
-  }
-  return false;
-};
-
-// Example: Creating a new tour
-createTour({
-  name: 'Exploring the Amazon Jungle',
-  duration: 10,
-  maxGroupSize: 12,
-  difficulty: 'medium',
-  price: 1500,
-  summary: 'A journey through the depths of the Amazon rainforest.',
-  imageCover: 'amazon_jungle.jpg',
-  startLocation: { coordinates: [3.465, -62.259], address: 'Amazon Rainforest' }
+// Route to get all tours
+app.get('/tours', (req, res) => {
+  const tours = getAllTours();
+  res.json(tours);
 });
 
-// Example of how to fetch all tours
-console.log(getAllTours());
+// Route to get a specific tour by ID
+app.get('/tours/:id', (req, res) => {
+  const tourId = parseInt(req.params.id, 10);
+  const tour = getTourById(tourId);
+  if (!tour) {
+    return res.status(404).send({ message: 'Tour not found' });
+  }
+  res.json(tour);
+});
 
-// Example of how to fetch a specific tour
-console.log(getTourById(1));
+// Route to create a new tour
+app.post('/tours', (req, res) => {
+  const newTourData = req.body;
+  const newTour = createTour(newTourData);
+  res.status(201).json(newTour);
+});
 
-// Example of how to update a tour
-updateTour(1, { price: 1700 });
+// Route to update a tour
+app.put('/tours/:id', (req, res) => {
+  const tourId = parseInt(req.params.id, 10);
+  const updatedData = req.body;
+  const updatedTour = updateTour(tourId, updatedData);
+  if (!updatedTour) {
+    return res.status(404).send({ message: 'Tour not found' });
+  }
+  res.json(updatedTour);
+});
 
-// Example of how to delete a tour
-deleteTour(1);
+// Route to delete a tour
+app.delete('/tours/:id', (req, res) => {
+  const tourId = parseInt(req.params.id, 10);
+  const wasDeleted = deleteTour(tourId);
+  if (!wasDeleted) {
+    return res.status(404).send({ message: 'Tour not found' });
+  }
+  res.status(204).send();  // No content
+});
 
-module.exports = { createTour, getAllTours, getTourById, updateTour, deleteTour };
+app.listen(5000, () => {
+  console.log('App running on port 5000...');
+});
