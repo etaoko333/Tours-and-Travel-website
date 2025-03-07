@@ -13,7 +13,15 @@ const findUserByEmail = (email) => {
 // User model
 class User {
   constructor({ name, email, password, passwordConfirm, photo = 'default.jpg', role = 'user' }) {
-    this.id = users.length + 1; // Simple ID generation for example
+    if (password !== passwordConfirm) {
+      throw new Error('Passwords do not match');
+    }
+
+    if (findUserByEmail(email)) {
+      throw new Error('Email already exists');
+    }
+
+    this.id = users.length + 1;  // Simple ID generation for example
     this.name = name;
     this.email = email.toLowerCase();
     this.photo = photo;
@@ -46,7 +54,7 @@ class User {
 
   // Compare candidate password with the stored hashed password
   async correctPassword(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
+    return bcrypt.compare(candidatePassword, this.password);
   }
 
   // Method to change the password after a JWT is issued
@@ -69,13 +77,13 @@ class User {
     return resetToken;
   }
 
+  // Check if password reset token is still valid
+  isPasswordResetTokenValid() {
+    return Date.now() < this.PasswordResetExpires;
+  }
+
   // Save user to in-memory storage (this is just an example, replace with file storage or DB if needed)
   save() {
-    // Check if email already exists in users array
-    const existingUser = findUserByEmail(this.email);
-    if (existingUser) {
-      throw new Error('Email already exists');
-    }
     users.push(this);
     return this;
   }
@@ -115,8 +123,9 @@ try {
   console.log('User created successfully:', newUser);
 
   // Check if the user's password is correct
-  const isPasswordCorrect = newUser.correctPassword('password123');
-  console.log('Password match:', isPasswordCorrect);
+  newUser.correctPassword('password123').then(isPasswordCorrect => {
+    console.log('Password match:', isPasswordCorrect);
+  });
 
   // Create password reset token
   const resetToken = newUser.createPasswordResetToken();
